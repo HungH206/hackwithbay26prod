@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-07-07T22:40:50.835Z",
+  "updated_at": "2026-07-07T23:15:29.191Z",
   "users": [
     {
       "id": "user-demo",
@@ -76,6 +76,26 @@
     }
   ],
   "imports": [
+    {
+      "id": "aa336bc2-38ca-442e-b68c-16230961f8ca",
+      "created_at": "2026-07-07T23:15:29.191Z",
+      "url": "https://www.foodista.com/recipe/K6M5RCKM/mexican-chicken-rice-bowl",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "1096017",
+      "recipe_id": "5be4b9ef-6ec2-4e62-9da2-351b12e104e2"
+    },
+    {
+      "id": "123af6b1-21db-4e30-802c-0d4feeb9b651",
+      "created_at": "2026-07-07T23:15:20.487Z",
+      "url": "https://www.foodista.com/recipe/ZBZ7SBV2/chicken-brown-fried-rice",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "637996",
+      "recipe_id": "aef96e03-30ab-4182-ab0a-00f767875a71"
+    },
     {
       "id": "9c1a1483-6c8f-4ff2-94b9-f72e8a218d97",
       "created_at": "2026-07-07T22:40:50.835Z",

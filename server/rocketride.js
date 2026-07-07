@@ -6,6 +6,25 @@ export function isRocketRideConfigured() {
   );
 }
 
+// Set the first time the server rejects a task-control operation, so we stop
+// re-attempting (and re-logging) RocketRide on every request for this session.
+let rocketRideDisabledReason = null;
+
+function isPermissionError(error) {
+  return /permission\s+'?[\w.]+'?\s+denied/i.test(error?.message ?? "");
+}
+
+// True only when RocketRide is configured AND has not been disabled by a
+// permission failure. Callers gate on this instead of isRocketRideConfigured()
+// so a missing scope degrades to the Butterbase/local fallback cleanly.
+export function isRocketRideAvailable() {
+  return isRocketRideConfigured() && !rocketRideDisabledReason;
+}
+
+export function getRocketRideDisabledReason() {
+  return rocketRideDisabledReason;
+}
+
 export function getRocketRideConfig() {
   return {
     endpoint: process.env.ROCKETRIDE_ENDPOINT,
@@ -60,6 +79,16 @@ async function withRocketRideClient(callback) {
       token = taskToken;
     });
     return result?.value ?? result;
+  } catch (error) {
+    if (isPermissionError(error) && !rocketRideDisabledReason) {
+      rocketRideDisabledReason = error.message;
+      console.warn(
+        `RocketRide disabled for this session: ${error.message}. ` +
+          "The API key authenticated but lacks the 'task.control' scope needed to start pipelines. " +
+          "Provide a task-control-scoped ROCKETRIDE_API_KEY to enable it; using Butterbase/local fallback until then.",
+      );
+    }
+    throw error;
   } finally {
     if (token) {
       await client.terminate(token).catch(() => {});

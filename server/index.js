@@ -1,5 +1,6 @@
 import cors from "cors";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import express from "express";
 import {
@@ -22,6 +23,7 @@ import {
 } from "./providers/spoonacular.js";
 import {
   getRocketRideConfig,
+  isRocketRideAvailable,
   isRocketRideConfigured,
   runRocketRideAgentChat,
   runRocketRidePipeline,
@@ -477,7 +479,7 @@ app.post("/api/recipes/from-link", async (request, response) => {
     });
     response.status(201).json({ ok: true, recipe: savedRecipe, source: "scraped-json-ld" });
   } catch (error) {
-    if (isRocketRideConfigured()) {
+    if (isRocketRideAvailable()) {
       try {
         const pipelineResult = await runRocketRidePipeline("/fetch_scrape_extract", {
           url,
@@ -528,7 +530,7 @@ app.post("/api/agent/chat", async (request, response) => {
   const pantryItems = request.body.pantry_items ?? [];
   const recipes = await listRecipes();
 
-  if (isRocketRideConfigured() && getRocketRideConfig().auth) {
+  if (isRocketRideAvailable() && getRocketRideConfig().auth) {
     try {
       const agentResult = await runRocketRideAgentChat({ message, pantryItems, recipes });
       response.json({
@@ -632,11 +634,20 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: error.message });
 });
 
-const server = app.listen(port, () => {
-  console.log(`bepgraph backend listening on http://localhost:${port}`);
-});
+// On Vercel the Express app is imported as a serverless function handler (see
+// api/index.js) and must NOT bind a port. Only start a listener when this file
+// is executed directly (local `npm run dev` / `npm run server`).
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
-process.on("SIGINT", async () => {
-  await closeDriver();
-  server.close(() => process.exit(0));
-});
+if (isDirectRun && !process.env.VERCEL) {
+  const server = app.listen(port, () => {
+    console.log(`bepgraph backend listening on http://localhost:${port}`);
+  });
+
+  process.on("SIGINT", async () => {
+    await closeDriver();
+    server.close(() => process.exit(0));
+  });
+}
+
+export default app;
