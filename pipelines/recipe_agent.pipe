@@ -1,0 +1,129 @@
+{
+  "description": "bepgraph: graph-aware recipe agent. Retrieves Neo4j recipe context and answers with Butterbase GPT-5 Nano.",
+  "version": 1,
+  "source": "chat_input",
+  "components": [
+    {
+      "id": "chat_input",
+      "provider": "chat",
+      "name": "Agent Chat Input",
+      "description": "Accepts user meal questions.",
+      "config": {}
+    },
+    {
+      "id": "butterbase_llm",
+      "provider": "llm_openai_api",
+      "name": "Butterbase GPT-5 Nano",
+      "config": {
+        "openai_api.profile": "custom",
+        "base_url": "${BUTTERBASE_API_URL}/v1",
+        "model": "${BUTTERBASE_AI_MODEL}",
+        "modelTotalTokens": 128000
+      }
+    },
+    {
+      "id": "neo4j_graph",
+      "provider": "db_neo4j",
+      "name": "Recipe Neo4j Graph",
+      "description": "Read-only recipe graph retrieval.",
+      "config": {
+        "neo4jdb.profile": "default",
+        "neo4jdb.uri": "${NEO4J_URI}",
+        "neo4jdb.auth_method": "userpass",
+        "neo4jdb.user": "${NEO4J_USER}",
+        "neo4jdb.password": "${NEO4J_PASSWORD}",
+        "neo4jdb.database": "neo4j",
+        "neo4jdb.db_description": "Recipe knowledge graph with Recipe, Ingredient, Source, and Step nodes. Recipe REQUIRES Ingredient, SOURCED_FROM Source, and HAS_STEP Step. Use MATCH-only Cypher to retrieve recipe recommendations by pantry ingredient overlap.",
+        "neo4jdb.max_attempts": 5,
+        "neo4jdb.allow_execute": false
+      },
+      "control": [
+        {
+          "classType": "llm",
+          "from": "butterbase_llm"
+        }
+      ]
+    },
+    {
+      "id": "butterbase_mcp",
+      "provider": "tool_mcp_client",
+      "name": "Butterbase MCP",
+      "config": {
+        "mcp_client.serverName": "butterbase",
+        "mcp_client.transport": "streamable-http",
+        "mcp_client.endpoint": "https://api.butterbase.ai/mcp",
+        "mcp_client.bearer": "${BUTTERBASE_API_KEY}"
+      }
+    },
+    {
+      "id": "memory",
+      "provider": "memory_internal",
+      "name": "Agent Memory",
+      "config": {}
+    },
+    {
+      "id": "recipe_agent",
+      "provider": "agent_rocketride",
+      "name": "bepgraph Recipe Agent",
+      "description": "Answers meal questions by querying Neo4j recipe data and using Butterbase AI.",
+      "config": {
+        "agent_rocketride.profile": "default",
+        "agent_description": "Recommend meals from a Neo4j recipe graph and explain matches using pantry ingredients.",
+        "max_waves": 6,
+        "instructions": [
+          "Use neo4j_graph.get_data to retrieve recipe candidates from the graph.",
+          "Do not invent recipes unless no graph recipe exists.",
+          "Prefer recipes whose ingredients overlap the user's pantry.",
+          "Return concise JSON with keys: recipe_name, reason, missing_ingredients, confidence, source.",
+          "If source links exist, include the best source URL.",
+          "Do not include markdown fences in the final answer."
+        ]
+      },
+      "input": [
+        {
+          "lane": "questions",
+          "from": "chat_input"
+        }
+      ],
+      "control": [
+        {
+          "classType": "llm",
+          "from": "butterbase_llm"
+        },
+        {
+          "classType": "tool",
+          "from": "neo4j_graph"
+        },
+        {
+          "classType": "tool",
+          "from": "butterbase_mcp"
+        },
+        {
+          "classType": "memory",
+          "from": "memory"
+        }
+      ]
+    },
+    {
+      "id": "agent_response",
+      "provider": "response_answers",
+      "name": "Return Agent Answer",
+      "config": {
+        "laneName": "answer"
+      },
+      "input": [
+        {
+          "lane": "answers",
+          "from": "recipe_agent"
+        }
+      ]
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "editorMode": "design",
+  "project_id": "6915822b-5d21-42e3-84db-7a418999224e"
+}

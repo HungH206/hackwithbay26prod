@@ -1,1 +1,7 @@
 .rocketride/
+node_modules/
+dist/
+.venv/
+.env
+.env.*
+!.env.example

@@ -1,0 +1,13 @@
+{
+  "url": "https://www.allrecipes.com/recipe/24074/alysias-basic-meat-lasagna/",
+  "model": "openai/gpt-5-nano",
+  "expected_schema": {
+    "recipe": {
+      "name": "string",
+      "author": "string"
+    },
+    "ingredients": [{ "name": "string", "quantity": "string", "unit": "string" }],
+    "steps": [{ "order": 1, "text": "string" }],
+    "sources": [{ "url": "string", "type": "webpage" }]
+  }
+}

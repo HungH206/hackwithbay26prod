@@ -1,0 +1,133 @@
+{
+  "description": "bepgraph: fetch a recipe URL, extract structured recipe data with Butterbase GPT-5 Nano, and return a unified recipe object.",
+  "version": 1,
+  "source": "recipe_webhook",
+  "components": [
+    {
+      "id": "recipe_webhook",
+      "provider": "webhook",
+      "name": "Recipe URL Input",
+      "description": "Accepts JSON input: { url, model }.",
+      "config": {}
+    },
+    {
+      "id": "butterbase_llm",
+      "provider": "llm_openai_api",
+      "name": "Butterbase GPT-5 Nano",
+      "description": "OpenAI-compatible Butterbase model gateway.",
+      "config": {
+        "openai_api.profile": "custom",
+        "base_url": "${BUTTERBASE_API_URL}/v1",
+        "model": "${BUTTERBASE_AI_MODEL}",
+        "modelTotalTokens": 128000
+      }
+    },
+    {
+      "id": "http_tools",
+      "provider": "tool_http_request",
+      "name": "HTTP Fetch Tool",
+      "description": "Allows the agent to fetch recipe source pages.",
+      "config": {
+        "http_request.serverName": "http",
+        "http_request.allowGET": true,
+        "http_request.allowPOST": false,
+        "http_request.allowPUT": false,
+        "http_request.allowPATCH": false,
+        "http_request.allowDELETE": false,
+        "http_request.allowHEAD": false,
+        "http_request.allowOPTIONS": false,
+        "http_request.urlWhitelist": [
+          "^https?://.*"
+        ],
+        "http_request.rateLimitPerSecond": 3,
+        "http_request.rateLimitPerMinute": 30,
+        "http_request.maxConcurrentRequests": 2
+      }
+    },
+    {
+      "id": "butterbase_mcp",
+      "provider": "tool_mcp_client",
+      "name": "Butterbase MCP",
+      "description": "Optional Butterbase backend tools available to the agent.",
+      "config": {
+        "mcp_client.serverName": "butterbase",
+        "mcp_client.transport": "streamable-http",
+        "mcp_client.endpoint": "https://api.butterbase.ai/mcp",
+        "mcp_client.bearer": "${BUTTERBASE_API_KEY}"
+      }
+    },
+    {
+      "id": "memory",
+      "provider": "memory_internal",
+      "name": "Run Memory",
+      "config": {}
+    },
+    {
+      "id": "extract_agent",
+      "provider": "agent_rocketride",
+      "name": "Recipe Extraction Agent",
+      "description": "Fetches a recipe URL and extracts structured recipe JSON.",
+      "config": {
+        "agent_rocketride.profile": "default",
+        "agent_description": "Extract structured recipe data from URLs for the bepgraph recipe knowledge graph.",
+        "max_waves": 6,
+        "instructions": [
+          "Input is JSON with url and model.",
+          "Use http.http_request to fetch the URL.",
+          "Extract only factual recipe data from the source.",
+          "Return strict JSON with keys: recipe, ingredients, steps, sources.",
+          "recipe must include name and author.",
+          "ingredients must be an array of objects: {name, quantity, unit}.",
+          "steps must be an array of objects: {order, text}.",
+          "sources must include the original URL and type webpage/video/document.",
+          "Do not include markdown fences in the final answer."
+        ]
+      },
+      "input": [
+        {
+          "lane": "questions",
+          "from": "recipe_webhook"
+        }
+      ],
+      "control": [
+        {
+          "classType": "llm",
+          "from": "butterbase_llm"
+        },
+        {
+          "classType": "tool",
+          "from": "http_tools"
+        },
+        {
+          "classType": "tool",
+          "from": "butterbase_mcp"
+        },
+        {
+          "classType": "memory",
+          "from": "memory"
+        }
+      ]
+    },
+    {
+      "id": "recipe_response",
+      "provider": "response_answers",
+      "name": "Return Extracted Recipe",
+      "config": {
+        "laneName": "recipe"
+      },
+      "input": [
+        {
+          "lane": "answers",
+          "from": "extract_agent"
+        }
+      ]
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  },
+  "editorMode": "design",
+  "project_id": "db13636d-1487-49b1-a84a-de9679eaeae6"
+}

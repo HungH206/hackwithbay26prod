@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "updated_at": "2026-07-07T22:40:50.835Z",
+  "users": [
+    {
+      "id": "user-demo",
+      "name": "Demo Cook",
+      "role": "owner"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "recipe-ginger-tofu-rice-bowl",
+      "owner_user_id": "user-demo",
+      "name": "Ginger Tofu Rice Bowl",
+      "author": "bepgraph Demo",
+      "ingredients": [
+        {
+          "name": "tofu",
+          "quantity": "1",
+          "unit": "block"
+        },
+        {
+          "name": "rice",
+          "quantity": "2",
+          "unit": "cups"
+        },
+        {
+          "name": "ginger",
+          "quantity": "1",
+          "unit": "tbsp"
+        },
+        {
+          "name": "garlic",
+          "quantity": "2",
+          "unit": "cloves"
+        },
+        {
+          "name": "spinach",
+          "quantity": "2",
+          "unit": "cups"
+        },
+        {
+          "name": "soy sauce",
+          "quantity": "2",
+          "unit": "tbsp"
+        }
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "text": "Cook rice until tender."
+        },
+        {
+          "order": 2,
+          "text": "Sear tofu with ginger and garlic."
+        },
+        {
+          "order": 3,
+          "text": "Wilt spinach, finish with soy sauce, and serve over rice."
+        }
+      ],
+      "sources": [
+        {
+          "url": "https://example.com/ginger-tofu-rice-bowl",
+          "type": "webpage",
+          "title": "Original ginger tofu rice bowl recipe"
+        }
+      ],
+      "tags": [
+        "vegetarian",
+        "quick"
+      ],
+      "created_at": "2026-07-07T00:00:00.000Z",
+      "updated_at": "2026-07-07T00:00:00.000Z"
+    }
+  ],
+  "imports": [
+    {
+      "id": "9c1a1483-6c8f-4ff2-94b9-f72e8a218d97",
+      "created_at": "2026-07-07T22:40:50.835Z",
+      "url": "https://www.afrolems.com/2015/05/02/mango-fried-rice/",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "716311",
+      "recipe_id": "0a6e0a7b-de40-4ca8-9acb-1524944e7084"
+    },
+    {
+      "id": "d3723664-5659-4dd0-b580-d05b94f243f0",
+      "created_at": "2026-07-07T22:29:27.945Z",
+      "url": "https://fullbellysisters.blogspot.com/2017/06/bbq-gochujang-cauliflower-fried-rice.html",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "984198",
+      "recipe_id": "d1767d2c-884e-4260-a557-7ac58169cafb"
+    },
+    {
+      "id": "94765376-0b5e-47f1-a1bb-373353388eae",
+      "created_at": "2026-07-07T22:25:30.161Z",
+      "url": "https://www.afrolems.com/2014/03/08/plantain-pizza/",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "716300",
+      "recipe_id": "f6415907-cd14-448d-8ff3-877137a6138a"
+    },
+    {
+      "id": "838af0dc-e573-4ae3-97b2-10225d301e01",
+      "created_at": "2026-07-07T22:25:05.911Z",
+      "url": "https://www.foodista.com/recipe/NYLVT4DN/goat-cheese-pesto-pizza",
+      "status": "imported",
+      "source_type": "api",
+      "provider": "spoonacular",
+      "external_id": "644953",
+      "recipe_id": "63ccebbd-a07a-4e64-bfd9-7956d1286cb7"
+    },
+    {
+      "id": "import-example",
+      "url": "https://example.com/ginger-tofu-rice-bowl",
+      "status": "seeded",
+      "source_type": "webpage",
+      "recipe_id": "recipe-ginger-tofu-rice-bowl",
+      "created_at": "2026-07-07T00:00:00.000Z"
+    }
+  ]
+}
