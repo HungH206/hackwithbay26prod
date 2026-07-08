@@ -1,5 +1,5 @@
 {
-  "description": "bepgraph: graph-aware recipe agent. Retrieves Neo4j recipe context and answers with Butterbase GPT-5 Nano.",
+  "description": "bepgraph: graph-aware recipe agent. Routes between the Neo4j recipe graph and the Spoonacular API, answering with Butterbase GPT-5 Nano.",
   "version": 1,
   "source": "chat_input",
   "components": [
@@ -16,10 +16,21 @@
       "name": "Butterbase GPT-5 Nano",
       "config": {
         "openai_api.profile": "custom",
-        "base_url": "${BUTTERBASE_API_URL}/v1",
-        "model": "${BUTTERBASE_AI_MODEL}",
-        "modelTotalTokens": 128000
-      }
+        "base_url": "${ROCKETRIDE_BUTTERBASE_API_URL}/v1",
+        "model": "${ROCKETRIDE_BUTTERBASE_AI_MODEL}",
+        "modelTotalTokens": 128000,
+        "apikey": "${ROCKETRIDE_BUTTERBASE_API_KEY}"
+      },
+      "control": [
+        {
+          "classType": "llm",
+          "from": "recipe_agent"
+        },
+        {
+          "classType": "llm",
+          "from": "neo4j_graph"
+        }
+      ]
     },
     {
       "id": "neo4j_graph",
@@ -28,10 +39,10 @@
       "description": "Read-only recipe graph retrieval.",
       "config": {
         "neo4jdb.profile": "default",
-        "neo4jdb.uri": "${NEO4J_URI}",
+        "neo4jdb.uri": "${ROCKETRIDE_NEO4J_URI}",
         "neo4jdb.auth_method": "userpass",
-        "neo4jdb.user": "${NEO4J_USER}",
-        "neo4jdb.password": "${NEO4J_PASSWORD}",
+        "neo4jdb.user": "${ROCKETRIDE_NEO4J_USER}",
+        "neo4jdb.password": "${ROCKETRIDE_NEO4J_PASSWORD}",
         "neo4jdb.database": "neo4j",
         "neo4jdb.db_description": "Recipe knowledge graph with Recipe, Ingredient, Source, and Step nodes. Recipe REQUIRES Ingredient, SOURCED_FROM Source, and HAS_STEP Step. Use MATCH-only Cypher to retrieve recipe recommendations by pantry ingredient overlap.",
         "neo4jdb.max_attempts": 5,
@@ -39,27 +50,52 @@
       },
       "control": [
         {
-          "classType": "llm",
-          "from": "butterbase_llm"
+          "classType": "tool",
+          "from": "recipe_agent"
         }
       ]
     },
     {
-      "id": "butterbase_mcp",
-      "provider": "tool_mcp_client",
-      "name": "Butterbase MCP",
+      "id": "spoonacular_http",
+      "provider": "tool_http_request",
+      "name": "Spoonacular API",
+      "description": "External recipe search via the Spoonacular REST API (GET only).",
       "config": {
-        "mcp_client.serverName": "butterbase",
-        "mcp_client.transport": "streamable-http",
-        "mcp_client.endpoint": "https://api.butterbase.ai/mcp",
-        "mcp_client.bearer": "${BUTTERBASE_API_KEY}"
-      }
+        "type": "tool_http_request",
+        "allowGET": true,
+        "allowPOST": false,
+        "allowPUT": false,
+        "allowPATCH": false,
+        "allowDELETE": false,
+        "allowHEAD": false,
+        "allowOPTIONS": false,
+        "urlWhitelist": [
+          {
+            "whitelistPattern": "^https://api\\.spoonacular\\.com/.*"
+          }
+        ],
+        "rateLimitPerSecond": 3,
+        "rateLimitPerMinute": 30,
+        "maxConcurrentRequests": 2
+      },
+      "control": [
+        {
+          "classType": "tool",
+          "from": "recipe_agent"
+        }
+      ]
     },
     {
       "id": "memory",
       "provider": "memory_internal",
       "name": "Agent Memory",
-      "config": {}
+      "config": {},
+      "control": [
+        {
+          "classType": "memory",
+          "from": "recipe_agent"
+        }
+      ]
     },
     {
       "id": "recipe_agent",
@@ -68,14 +104,18 @@
       "description": "Answers meal questions by querying Neo4j recipe data and using Butterbase AI.",
       "config": {
         "agent_rocketride.profile": "default",
-        "agent_description": "Recommend meals from a Neo4j recipe graph and explain matches using pantry ingredients.",
+        "agent_description": "Recommend meals by routing between an internal Neo4j recipe graph and the external Spoonacular API.",
         "max_waves": 6,
         "instructions": [
-          "Use neo4j_graph.get_data to retrieve recipe candidates from the graph.",
-          "Do not invent recipes unless no graph recipe exists.",
-          "Prefer recipes whose ingredients overlap the user's pantry.",
-          "Return concise JSON with keys: recipe_name, reason, missing_ingredients, confidence, source.",
-          "If source links exist, include the best source URL.",
+          "You have TWO recipe data sources and must decide which to use for each question.",
+          "Source 1 (internal): neo4j_graph — the recipe knowledge graph (Recipe, Ingredient, Source, Step nodes). Call neo4j_graph.get_data with a natural-language request to find recipes whose ingredients overlap the user's pantry.",
+          "Source 2 (external): the Spoonacular HTTP tool — an external recipe API reached via HTTP GET.",
+          "Routing rule: ALWAYS try neo4j_graph first. If it returns no usable recipe, is empty, or errors, fall back to Spoonacular. Also use Spoonacular when the user explicitly asks for recipes beyond the local collection.",
+          "To search Spoonacular by keywords, GET: https://api.spoonacular.com/recipes/complexSearch?query=<terms>&number=5&addRecipeInformation=true&fillIngredients=true&apiKey=${ROCKETRIDE_SPOONACULAR_API_KEY}",
+          "To search Spoonacular by pantry ingredients, GET: https://api.spoonacular.com/recipes/findByIngredients?ingredients=<comma,separated,ingredients>&number=5&ranking=2&apiKey=${ROCKETRIDE_SPOONACULAR_API_KEY}",
+          "Always append apiKey=${ROCKETRIDE_SPOONACULAR_API_KEY} to every Spoonacular URL.",
+          "Prefer recipes whose ingredients overlap the user's pantry. Do not invent recipes.",
+          "Return concise JSON with keys: recipe_name, reason, missing_ingredients, confidence, source, source_type. Set source_type to 'neo4j' or 'spoonacular' to indicate which data source answered, and include the best source URL in source when available.",
           "Do not include markdown fences in the final answer."
         ]
       },
@@ -83,24 +123,6 @@
         {
           "lane": "questions",
           "from": "chat_input"
-        }
-      ],
-      "control": [
-        {
-          "classType": "llm",
-          "from": "butterbase_llm"
-        },
-        {
-          "classType": "tool",
-          "from": "neo4j_graph"
-        },
-        {
-          "classType": "tool",
-          "from": "butterbase_mcp"
-        },
-        {
-          "classType": "memory",
-          "from": "memory"
         }
       ]
     },
@@ -125,5 +147,5 @@
     "zoom": 1
   },
   "editorMode": "design",
-  "project_id": "6915822b-5d21-42e3-84db-7a418999224e"
+  "project_id": "29d633f1-f038-4a44-a45e-9081983d833e"
 }

@@ -17,10 +17,17 @@
       "description": "OpenAI-compatible Butterbase model gateway.",
       "config": {
         "openai_api.profile": "custom",
-        "base_url": "${BUTTERBASE_API_URL}/v1",
-        "model": "${BUTTERBASE_AI_MODEL}",
-        "modelTotalTokens": 128000
-      }
+        "base_url": "${ROCKETRIDE_BUTTERBASE_API_URL}/v1",
+        "model": "${ROCKETRIDE_BUTTERBASE_AI_MODEL}",
+        "modelTotalTokens": 128000,
+        "apikey": "${ROCKETRIDE_BUTTERBASE_API_KEY}"
+      },
+      "control": [
+        {
+          "classType": "llm",
+          "from": "extract_agent"
+        }
+      ]
     },
     {
       "id": "http_tools",
@@ -28,39 +35,41 @@
       "name": "HTTP Fetch Tool",
       "description": "Allows the agent to fetch recipe source pages.",
       "config": {
-        "http_request.serverName": "http",
-        "http_request.allowGET": true,
-        "http_request.allowPOST": false,
-        "http_request.allowPUT": false,
-        "http_request.allowPATCH": false,
-        "http_request.allowDELETE": false,
-        "http_request.allowHEAD": false,
-        "http_request.allowOPTIONS": false,
-        "http_request.urlWhitelist": [
-          "^https?://.*"
+        "type": "tool_http_request",
+        "allowGET": true,
+        "allowPOST": false,
+        "allowPUT": false,
+        "allowPATCH": false,
+        "allowDELETE": false,
+        "allowHEAD": false,
+        "allowOPTIONS": false,
+        "urlWhitelist": [
+          {
+            "whitelistPattern": "^https?://.*"
+          }
         ],
-        "http_request.rateLimitPerSecond": 3,
-        "http_request.rateLimitPerMinute": 30,
-        "http_request.maxConcurrentRequests": 2
-      }
-    },
-    {
-      "id": "butterbase_mcp",
-      "provider": "tool_mcp_client",
-      "name": "Butterbase MCP",
-      "description": "Optional Butterbase backend tools available to the agent.",
-      "config": {
-        "mcp_client.serverName": "butterbase",
-        "mcp_client.transport": "streamable-http",
-        "mcp_client.endpoint": "https://api.butterbase.ai/mcp",
-        "mcp_client.bearer": "${BUTTERBASE_API_KEY}"
-      }
+        "rateLimitPerSecond": 3,
+        "rateLimitPerMinute": 30,
+        "maxConcurrentRequests": 2
+      },
+      "control": [
+        {
+          "classType": "tool",
+          "from": "extract_agent"
+        }
+      ]
     },
     {
       "id": "memory",
       "provider": "memory_internal",
       "name": "Run Memory",
-      "config": {}
+      "config": {},
+      "control": [
+        {
+          "classType": "memory",
+          "from": "extract_agent"
+        }
+      ]
     },
     {
       "id": "extract_agent",
@@ -88,24 +97,6 @@
           "lane": "questions",
           "from": "recipe_webhook"
         }
-      ],
-      "control": [
-        {
-          "classType": "llm",
-          "from": "butterbase_llm"
-        },
-        {
-          "classType": "tool",
-          "from": "http_tools"
-        },
-        {
-          "classType": "tool",
-          "from": "butterbase_mcp"
-        },
-        {
-          "classType": "memory",
-          "from": "memory"
-        }
       ]
     },
     {
@@ -129,5 +120,5 @@
     "zoom": 1
   },
   "editorMode": "design",
-  "project_id": "db13636d-1487-49b1-a84a-de9679eaeae6"
+  "project_id": "19ed6149-bef5-4b7c-8a4e-0658052f0f43"
 }

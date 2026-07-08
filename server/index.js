@@ -25,7 +25,6 @@ import {
   getRocketRideConfig,
   isRocketRideAvailable,
   isRocketRideConfigured,
-  runRocketRideAgentChat,
   runRocketRidePipeline,
 } from "./rocketride.js";
 
@@ -236,6 +235,69 @@ function localAgentReply(message, pantryItems, recipes) {
 
   const best = scored[0];
   return `Best match: ${best.recipe.name}. It matches ${best.matches} of ${best.total} ingredient nodes from your pantry.`;
+}
+
+// Retrieve pantry-matched recipes straight from the Neo4j graph (or the file DB
+// when Neo4j isn't configured). Runs in-process, so it works even when
+// RocketRide's cloud cannot reach the Aura routing endpoint.
+async function getGraphRecipeContext(pantryItems) {
+  const pantry = pantryItems.map((item) => String(item).toLowerCase());
+
+  if (!isNeo4jConfigured()) {
+    // Prefer pantry matches, but always surface the saved collection so
+    // "what recipes do I have" works even with no overlap.
+    const matched = await queryRecipesByPantry(pantryItems);
+    const recipes = matched.length ? matched : await listRecipes();
+    return { source: "file", recipes };
+  }
+
+  const session = getDriver().session();
+  try {
+    // Return the whole saved collection (not just pantry matches), ranked by
+    // how many pantry ingredients each recipe overlaps. This lets the model
+    // both recommend matches AND answer inventory questions like "what do I
+    // have". matched/matchCount tell it the overlap; 0 means no pantry match.
+    const result = await session.executeRead((tx) =>
+      tx.run(
+        `
+        MATCH (r:Recipe)
+        OPTIONAL MATCH (r)-[:REQUIRES]->(i:Ingredient)
+        WITH r, collect(DISTINCT i.name) AS ingredients
+        WITH r, ingredients, [x IN ingredients WHERE x IN $pantry] AS matched
+        OPTIONAL MATCH (r)-[:SOURCED_FROM]->(src:Source)
+        WITH r, ingredients, matched, collect(DISTINCT src.url) AS sources
+        RETURN r.name AS name, r.author AS author, ingredients,
+               matched, size(matched) AS matchCount, size(ingredients) AS total,
+               sources[0] AS source
+        ORDER BY matchCount DESC, r.created_at DESC
+        LIMIT 15
+        `,
+        { pantry },
+      ),
+    );
+    return { source: "neo4j", recipes: result.records.map((record) => toNative(record.toObject())) };
+  } finally {
+    await session.close();
+  }
+}
+
+// Retrieve recipe candidates from the external Spoonacular API. Keyword search
+// uses the user's message, falling back to their pantry contents.
+async function getSpoonacularContext(message, pantryItems) {
+  const query = message?.trim() || pantryItems.join(", ");
+  if (!query) return { source: "spoonacular", recipes: [] };
+
+  const data = await searchSpoonacularRecipes({ query, number: 5 });
+  const recipes = (data.results ?? []).map((result) => ({
+    name: result.title,
+    author: result.sourceName ?? result.creditsText ?? "Spoonacular",
+    ingredients: (result.extendedIngredients ?? []).map(
+      (ingredient) => ingredient.nameClean ?? ingredient.name,
+    ),
+    source: result.sourceUrl ?? result.spoonacularSourceUrl ?? null,
+    readyInMinutes: result.readyInMinutes ?? null,
+  }));
+  return { source: "spoonacular", recipes };
 }
 
 app.get("/api/health", (_request, response) => {
@@ -528,26 +590,56 @@ app.post("/api/recipes/from-link", async (request, response) => {
 app.post("/api/agent/chat", async (request, response) => {
   const message = request.body.message ?? "";
   const pantryItems = request.body.pantry_items ?? [];
-  const recipes = await listRecipes();
 
-  if (isRocketRideAvailable() && getRocketRideConfig().auth) {
-    try {
-      const agentResult = await runRocketRideAgentChat({ message, pantryItems, recipes });
-      response.json({
-        reply: agentResult.reply,
-        source: "rocketride",
-        model: getButterbaseConfig().model,
-      });
-      return;
-    } catch (error) {
-      console.warn("RocketRide agent failed, falling back to Butterbase/local:", error.message);
-    }
+  // Bypass RocketRide for chat: retrieve directly from the Neo4j graph and the
+  // Spoonacular API in parallel, then let Butterbase route/answer over both
+  // context sets. Each source degrades independently — if one fails, the other
+  // still informs the answer.
+  const [graphOutcome, spoonacularOutcome] = await Promise.allSettled([
+    getGraphRecipeContext(pantryItems),
+    getSpoonacularContext(message, pantryItems),
+  ]);
+
+  const graph =
+    graphOutcome.status === "fulfilled" ? graphOutcome.value : { source: "neo4j", recipes: [] };
+  const spoonacular =
+    spoonacularOutcome.status === "fulfilled"
+      ? spoonacularOutcome.value
+      : { source: "spoonacular", recipes: [] };
+
+  if (graphOutcome.status === "rejected") {
+    console.warn("Graph retrieval failed:", graphOutcome.reason?.message);
   }
+  if (spoonacularOutcome.status === "rejected") {
+    console.warn("Spoonacular retrieval failed:", spoonacularOutcome.reason?.message);
+  }
+
+  const retrieved = {
+    graph: { source: graph.source, count: graph.recipes.length },
+    spoonacular: { count: spoonacular.recipes.length },
+  };
+
+  // Trim each source to a lean, model-friendly shape. A bloated context makes
+  // gpt-5-nano over-reason (burning the token budget), so send only what the
+  // model needs to route and answer.
+  const compactGraph = graph.recipes.slice(0, 12).map((recipe) => ({
+    name: recipe.name,
+    matched: recipe.matchCount ?? (recipe.matched?.length ?? 0),
+    total: recipe.total ?? (recipe.ingredients?.length ?? 0),
+    ingredients: (recipe.ingredients ?? []).slice(0, 10),
+    source: recipe.source ?? recipe.sources?.[0]?.url ?? null,
+  }));
+  const compactSpoonacular = spoonacular.recipes.map((recipe) => ({
+    name: recipe.name,
+    ingredients: (recipe.ingredients ?? []).slice(0, 10),
+    source: recipe.source ?? null,
+  }));
 
   if (!isButterbaseAiConfigured()) {
     response.json({
-      reply: localAgentReply(message, pantryItems, recipes),
+      reply: localAgentReply(message, pantryItems, await listRecipes()),
       source: "local-fallback",
+      retrieved,
     });
     return;
   }
@@ -558,37 +650,46 @@ app.post("/api/agent/chat", async (request, response) => {
         {
           role: "system",
           content:
-            "You are bepgraph, a recipe agent. Recommend meals using the provided recipe graph context. Be concise, practical, and cite recipe names when relevant.",
+            "You are bepgraph, a recipe agent. You are given recipe candidates from TWO sources: " +
+            "'graph_recipes' (the user's own saved Neo4j collection, each with matched/matchCount showing pantry overlap) " +
+            "and 'spoonacular_recipes' (an external recipe API). " +
+            "Answer the user's actual question: if they ask what recipes they have or to list/browse their collection, " +
+            "summarize graph_recipes (these ARE their saved recipes regardless of pantry overlap) — never claim they have " +
+            "none when graph_recipes is non-empty. If they ask for a recommendation, prefer graph recipes with the highest " +
+            "matchCount; if no graph recipe overlaps the pantry well, say so plainly and offer spoonacular suggestions " +
+            "instead of forcing a weak match. Do not invent recipes or pretend an unrelated recipe fits. " +
+            "Be concise and practical: name the recipe, list which pantry ingredients match and which are missing, " +
+            "include a source URL when available, and state which source (graph or spoonacular) you used.",
         },
         {
           role: "user",
           content: JSON.stringify({
             request: message,
             pantry_items: pantryItems,
-            recipes: recipes.map((recipe) => ({
-              name: recipe.name,
-              author: recipe.author,
-              ingredients: recipe.ingredients,
-              steps: recipe.steps,
-              sources: recipe.sources,
-            })),
+            graph_recipes: compactGraph,
+            spoonacular_recipes: compactSpoonacular,
           }),
         },
       ],
-      maxTokens: 500,
+      // gpt-5-nano is a reasoning model: reasoning tokens count against this
+      // budget. Low effort keeps reasoning small so the visible answer fits.
+      maxTokens: 2000,
       temperature: 0.4,
+      reasoningEffort: "low",
     });
 
     response.json({
       reply: aiResult.content,
       model: aiResult.model,
-      source: "butterbase-ai",
+      source: "graph+spoonacular",
+      retrieved,
     });
   } catch (error) {
     response.json({
-      reply: localAgentReply(message, pantryItems, recipes),
+      reply: localAgentReply(message, pantryItems, await listRecipes()),
       source: "local-fallback",
       warning: error.message,
+      retrieved,
     });
   }
 });

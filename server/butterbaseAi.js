@@ -21,7 +21,12 @@ function chatCompletionsUrl({ apiUrl, appId }) {
     : `${baseUrl}/v1/chat/completions`;
 }
 
-export async function createButterbaseChatCompletion({ messages, maxTokens = 500, temperature = 0.4 }) {
+export async function createButterbaseChatCompletion({
+  messages,
+  maxTokens = 500,
+  temperature = 0.4,
+  reasoningEffort,
+}) {
   const config = getButterbaseConfig();
 
   if (!config.apiKey) {
@@ -39,6 +44,11 @@ export async function createButterbaseChatCompletion({ messages, maxTokens = 500
       messages,
       max_tokens: maxTokens,
       temperature,
+      // Reasoning models (e.g. gpt-5-nano) spend tokens on hidden reasoning
+      // before producing visible content; without a cap they can consume the
+      // entire max_tokens budget and return an empty answer. Keep effort low
+      // for this recipe-routing task.
+      ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     }),
   });
 
